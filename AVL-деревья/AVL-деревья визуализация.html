@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анимация AVL-дерева</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .tree-node {
+            position: absolute;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background-color: white;
+            border: 3px solid #3b82f6; /* синий */
+            color: #1e3a8a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 10;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            margin-left: -22px; /* Центрирование по X */
+            margin-top: -22px;  /* Центрирование по Y */
+        }
+        
+        /* Стили для подсветки активных узлов */
+        .node-active { border-color: #eab308; background-color: #fef08a; transform: scale(1.15); box-shadow: 0 0 15px rgba(234,179,8,0.5); z-index: 20;}
+        .node-rotate { border-color: #ef4444; background-color: #fca5a5; transform: scale(1.15); box-shadow: 0 0 15px rgba(239,68,68,0.5); z-index: 20; color: #7f1d1d;}
+        .node-insert { border-color: #22c55e; background-color: #bbf7d0; transform: scale(1.15); box-shadow: 0 0 15px rgba(34,197,94,0.5); z-index: 20; color: #14532d;}
+        
+        svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
+        line { stroke: #94a3b8; stroke-width: 3; transition: none; }
+    </style>
+</head>
+<body class="bg-slate-50 flex flex-col items-center min-h-screen p-4 sm:p-8 font-sans">
+
+    <!-- Интерфейс управления -->
+    <div class="max-w-4xl w-full bg-white rounded-2xl shadow-xl p-6 mb-6">
+        <h1 class="text-2xl font-bold text-center mb-4 text-blue-700">Визуализация алгоритма AVL-Дерева</h1>
+        <p class="text-center text-gray-500 text-sm mb-6">Пошаговая работа вашего кода для данных: 10, 20, 30, 40, 50, 25</p>
+        
+        <!-- Информационная панель (текущий шаг) -->
+        <div id="explanation" class="text-lg text-center min-h-[80px] flex items-center justify-center font-medium text-gray-800 bg-blue-50 rounded-xl border border-blue-100 p-4 transition-all duration-300">
+            Загрузка симуляции...
+        </div>
+        
+        <!-- Кнопки -->
+        <div class="flex justify-center space-x-3 mt-6">
+            <button id="btn-prev" class="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold disabled:opacity-50 transition-colors">На шаг назад</button>
+            <button id="btn-next" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors shadow-md shadow-blue-200">Вперед</button>
+            <button id="btn-auto" class="px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition-colors shadow-md shadow-green-200">Автоплей</button>
+        </div>
+        
+        <!-- Прогресс бар -->
+        <div class="mt-6 w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+            <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <!-- Область визуализации дерева -->
+    <div class="w-full max-w-4xl overflow-x-auto flex justify-center pb-8">
+        <div id="tree-container" class="relative w-[800px] h-[360px] bg-white rounded-2xl shadow-lg border border-slate-200 flex-shrink-0 overflow-hidden">
+            <!-- Линии будут рисоваться внутри SVG -->
+            <svg id="lines-container"></svg>
+            <!-- Узлы будут добавляться сюда -->
+            <div id="nodes-container"></div>
+        </div>
+    </div>
+
+    <!-- Объяснение кода -->
+    <div class="mt-4 bg-white p-6 rounded-2xl shadow max-w-4xl w-full text-gray-700 border border-slate-100">
+        <h2 class="text-xl font-bold text-blue-800 mb-3">Связь с вашим C++ кодом</h2>
+        <ul class="list-disc pl-5 space-y-2 text-sm">
+            <li><strong>Малый левый поворот (leftRotate)</strong> срабатывает на <em>Шаге 5</em> (узел 10) и <em>Шаге 9</em> (узел 30). Он исправляет перекос вправо-вправо.</li>
+            <li><strong>Большой право-левый поворот (rightLeftRotate)</strong> срабатывает на <em>Шагах 12-13</em> для корня 20. Рекурсия обнаруживает, что баланс -2, а ключ 25 меньше ключа правого ребенка (40). Функция вызывает <code>rightRotate(40)</code>, а затем <code>leftRotate(20)</code>.</li>
+            <li>Фраза <em>"Проверка баланса"</em> в интерфейсе — это момент, когда рекурсия поднимается вверх, вычисляет <code>getHeight</code> и <code>getBalance</code>.</li>
+        </ul>
+    </div>
+
+    <script>
+        // База данных шагов, точно соответствующая работе вашего C++ алгоритма
+        const animationSteps = [
+            {
+                text: "Шаг 1. Вставляем 10. Дерево пустое, 10 становится корнем.",
+                nodes: [ {id: 10, x: 400, y: 50} ],
+                lines: [],
+                highlights: { 10: 'node-insert' }
+            },
+            {
+                text: "Шаг 2. Вставляем 20. Так как 20 > 10, спускаемся вправо.",
+                nodes: [ {id: 10, x: 400, y: 50}, {id: 20, x: 550, y: 130} ],
+                lines: [[10, 20]],
+                highlights: { 20: 'node-insert', 10: 'node-active' }
+            },
+            {
+                text: "Шаг 3. Вставляем 30. Спускаемся вправо: 30 > 10, затем 30 > 20.",
+                nodes: [ {id: 10, x: 400, y: 50}, {id: 20, x: 550, y: 130}, {id: 30, x: 700, y: 210} ],
+                lines: [[10, 20], [20, 30]],
+                highlights: { 30: 'node-insert' }
+            },
+            {
+                text: "Шаг 4. Возврат рекурсии в корень (10). Баланс = -2 (перекос вправо-вправо). Нужна балансировка!",
+                nodes: [ {id: 10, x: 400, y: 50}, {id: 20, x: 550, y: 130}, {id: 30, x: 700, y: 210} ],
+                lines: [[10, 20], [20, 30]],
+                highlights: { 10: 'node-rotate' }
+            },
+            {
+                text: "Шаг 5. Выполняем leftRotate(10). Узел 20 поднимается в корень, 10 уходит влево.",
+                nodes: [ {id: 20, x: 400, y: 50}, {id: 10, x: 250, y: 130}, {id: 30, x: 550, y: 130} ],
+                lines: [[20, 10], [20, 30]],
+                highlights: { 20: 'node-insert' }
+            },
+            {
+                text: "Шаг 6. Вставляем 40. Рекурсия: 40 > 20 (вправо), 40 > 30 (вправо).",
+                nodes: [ {id: 20, x: 400, y: 50}, {id: 10, x: 250, y: 130}, {id: 30, x: 550, y: 130}, {id: 40, x: 650, y: 210} ],
+                lines: [[20, 10], [20, 30], [30, 40]],
+                highlights: { 40: 'node-insert' }
+            },
+            {
+                text: "Шаг 7. Вставляем 50. Идем вправо до самого конца.",
+                nodes: [ {id: 20, x: 400, y: 50}, {id: 10, x: 250, y: 130}, {id: 30, x: 550, y: 130}, {id: 40, x: 650, y: 210}, {id: 50, x: 720, y: 290} ],
+                lines: [[20, 10], [20, 30], [30, 40], [40, 50]],
+                highlights: { 50: 'node-insert' }
+            },
+            {
+                text: "Шаг 8. Возврат рекурсии к 30. Баланс узла 30 = -2 (перекос вправо-вправо). Нужна балансировка!",
+                nodes: [ {id: 20, x: 400, y: 50}, {id: 10, x: 250, y: 130}, {id: 30, x: 550, y: 130}, {id: 40, x: 650, y: 210}, {id: 50, x: 720, y: 290} ],
+                lines: [[20, 10], [20, 30], [30, 40], [40, 50]],
+                highlights: { 30: 'node-rotate' }
+            },
+            {
+                text: "Шаг 9. Выполняем leftRotate(30). Узел 40 поднимается, 30 уходит влево под него.",
+                nodes: [ {id: 20, x: 400, y: 50}, {id: 10, x: 250, y: 130}, {id: 40, x: 550, y: 130}, {id: 30, x: 450, y: 210}, {id: 50, x: 650, y: 210} ],
+                lines: [[20, 10], [20, 40], [40, 30], [40, 50]],
+                highlights: { 40: 'node-insert' }
+            },
+            {
+                text: "Шаг 10. Вставляем 25. Путь рекурсии: 20 (вправо) -> 40 (влево) -> 30 (влево).",
+                nodes: [ {id: 20, x: 400, y: 50}, {id: 10, x: 250, y: 130}, {id: 40, x: 550, y: 130}, {id: 30, x: 450, y: 210}, {id: 50, x: 650, y: 210}, {id: 25, x: 380, y: 290} ],
+                lines: [[20, 10], [20, 40], [40, 30], [40, 50], [30, 25]],
+                highlights: { 25: 'node-insert' }
+            },
+            {
+                text: "Шаг 11. Возврат рекурсии к корню (20). Баланс = -2. Ключ 25 < правого ребенка (40). Это перекос ВПРАВО-ВЛЕВО. Нужен большой поворот!",
+                nodes: [ {id: 20, x: 400, y: 50}, {id: 10, x: 250, y: 130}, {id: 40, x: 550, y: 130}, {id: 30, x: 450, y: 210}, {id: 50, x: 650, y: 210}, {id: 25, x: 380, y: 290} ],
+                lines: [[20, 10], [20, 40], [40, 30], [40, 50], [30, 25]],
+                highlights: { 20: 'node-rotate', 40: 'node-rotate' }
+            },
+            {
+                text: "Шаг 12. Двойной поворот (1/2): rightRotate(40). Узел 30 поднимается, 40 уходит вправо.",
+                nodes: [ {id: 20, x: 400, y: 50}, {id: 10, x: 250, y: 130}, {id: 30, x: 550, y: 130}, {id: 25, x: 450, y: 210}, {id: 40, x: 650, y: 210}, {id: 50, x: 720, y: 290} ],
+                lines: [[20, 10], [20, 30], [30, 25], [30, 40], [40, 50]],
+                highlights: { 30: 'node-insert' }
+            },
+            {
+                text: "Шаг 13. Двойной поворот (2/2): leftRotate(20). 30 становится новым корнем всего дерева. Готово!",
+                nodes: [ {id: 30, x: 400, y: 50}, {id: 20, x: 250, y: 130}, {id: 10, x: 150, y: 210}, {id: 25, x: 350, y: 210}, {id: 40, x: 550, y: 130}, {id: 50, x: 650, y: 210} ],
+                lines: [[30, 20], [30, 40], [20, 10], [20, 25], [40, 50]],
+                highlights: { 30: 'node-active' }
+            }
+        ];
+
+        let currentStep = 0;
+        let isAutoPlaying = false;
+        let autoPlayInterval;
+
+        function renderStep(index) {
+            const step = animationSteps[index];
+            document.getElementById('explanation').innerText = step.text;
+            const nodesContainer = document.getElementById('nodes-container');
+
+            // Управление появлением, позициями и стилями узлов
+            const activeIds = new Set();
+            
+            step.nodes.forEach(nodeData => {
+                activeIds.add(nodeData.id);
+                let el = document.getElementById(`node-${nodeData.id}`);
+                
+                // Если узла еще нет, создаем его
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = `node-${nodeData.id}`;
+                    el.className = 'tree-node';
+                    el.innerText = nodeData.id;
+                    el.style.opacity = '0';
+                    el.style.left = nodeData.x + 'px';
+                    el.style.top = (nodeData.y - 15) + 'px'; // Чуть выше для анимации падения
+                    nodesContainer.appendChild(el);
+                    void el.offsetWidth; // Принудительный reflow
+                }
+                
+                // Анимация перемещения
+                el.style.opacity = '1';
+                el.style.left = nodeData.x + 'px';
+                el.style.top = nodeData.y + 'px';
+
+                // Сброс и применение цветовых классов
+                el.className = 'tree-node';
+                if (step.highlights && step.highlights[nodeData.id]) {
+                    el.classList.add(step.highlights[nodeData.id]);
+                }
+            });
+
+            // Прячем узлы, которых нет на текущем шаге (если идем назад)
+            Array.from(nodesContainer.children).forEach(el => {
+                const id = parseInt(el.id.replace('node-', ''));
+                if (!activeIds.has(id)) {
+                    el.style.opacity = '0';
+                    setTimeout(() => { if (el.parentNode && el.style.opacity == '0') el.parentNode.removeChild(el); }, 600);
+                }
+            });
+
+            // Обновление прогресс-бара и кнопок
+            const progress = (index / (animationSteps.length - 1)) * 100;
+            document.getElementById('progress-bar').style.width = progress + '%';
+            document.getElementById('btn-prev').disabled = index === 0;
+            document.getElementById('btn-next').disabled = index === animationSteps.length - 1;
+
+            if (index === animationSteps.length - 1 && isAutoPlaying) {
+                toggleAutoPlay();
+            }
+        }
+
+        // Движок отрисовки SVG линий (работает 60 кадров в секунду, чтобы линии плавно тянулись за движущимися узлами)
+        function startLineAnimation() {
+            function drawLines() {
+                const linesContainer = document.getElementById('lines-container');
+                linesContainer.innerHTML = '';
+                if(!animationSteps[currentStep]) return;
+
+                animationSteps[currentStep].lines.forEach(([id1, id2]) => {
+                    const el1 = document.getElementById(`node-${id1}`);
+                    const el2 = document.getElementById(`node-${id2}`);
+                    
+                    if(el1 && el2) {
+                        const style1 = window.getComputedStyle(el1);
+                        const style2 = window.getComputedStyle(el2);
+                        
+                        // Если оба узла видны
+                        if(parseFloat(style1.opacity) > 0.1 && parseFloat(style2.opacity) > 0.1) {
+                            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            // Берем текущие (возможно промежуточные анимационные) координаты
+                            line.setAttribute('x1', style1.left);
+                            line.setAttribute('y1', style1.top);
+                            line.setAttribute('x2', style2.left);
+                            line.setAttribute('y2', style2.top);
+                            line.style.opacity = Math.min(parseFloat(style1.opacity), parseFloat(style2.opacity));
+                            linesContainer.appendChild(line);
+                        }
+                    }
+                });
+                requestAnimationFrame(drawLines);
+            }
+            drawLines();
+        }
+
+        // Логика авто-воспроизведения
+        function toggleAutoPlay() {
+            isAutoPlaying = !isAutoPlaying;
+            const btn = document.getElementById('btn-auto');
+            
+            if(isAutoPlaying) {
+                btn.innerText = 'Пауза';
+                btn.classList.replace('bg-green-500', 'bg-red-500');
+                btn.classList.replace('hover:bg-green-600', 'hover:bg-red-600');
+                
+                if (currentStep === animationSteps.length - 1) currentStep = 0;
+                
+                renderStep(currentStep);
+                autoPlayInterval = setInterval(() => {
+                    if(currentStep < animationSteps.length - 1) {
+                        currentStep++;
+                        renderStep(currentStep);
+                    } else {
+                        toggleAutoPlay();
+                    }
+                }, 3000); // 3 секунды на чтение и просмотр шага
+            } else {
+                btn.innerText = 'Автоплей';
+                btn.classList.replace('bg-red-500', 'bg-green-500');
+                btn.classList.replace('hover:bg-red-600', 'hover:bg-green-600');
+                clearInterval(autoPlayInterval);
+            }
+        }
+
+        // Инициализация
+        window.onload = () => {
+            renderStep(0);
+            startLineAnimation();
+            
+            document.getElementById('btn-prev').onclick = () => {
+                if(currentStep > 0) { currentStep--; renderStep(currentStep); }
+            };
+            
+            document.getElementById('btn-next').onclick = () => {
+                if(currentStep < animationSteps.length - 1) { currentStep++; renderStep(currentStep); }
+            };
+            
+            document.getElementById('btn-auto').onclick = toggleAutoPlay;
+        };
+    </script>
+</body>
+</html>
